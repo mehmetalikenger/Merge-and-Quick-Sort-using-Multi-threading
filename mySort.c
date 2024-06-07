@@ -4,222 +4,178 @@
 #include <pthread.h>
 #include <sys/time.h>
 
-
-struct Sort_SiralamaParametreleri {
-    char **kelimeler;
-    int baslangic;
-    int son;
+struct Sort_Parameters {
+    char **words;
+    int start;
+    int end;
 };
-
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
+int ThreadCount = 0;
 
-int ThreadSayisi = 0;
+int ThreadStatus();
+void Merge(char **words, int start, int middle, int end);
+void MergeSort(char **words, int start, int end);
+void *ParallelMergeSort(void *args);
+void QuickSort(char **words, int start, int end);
+void *ParallelQuickSort(void *args);
+int Partition(char **words, int start, int end);
+void Swap(char **words, int i, int j);
 
-
-int ThreadDurum();
-void Merge(char **kelimeler, int baslangic, int ortanca, int son);
-void MergeSort(char **kelimeler, int baslangic, int son);
-void *ParalelMergeSort(void *args);
-void QuickSort(char **kelimeler, int baslangic, int son);
-void *ParalelQuickSort(void *args);
-int Bolumlendir(char **kelimeler, int baslangic, int son);
-void Degistir(char **kelimeler, int i, int j);
-
-
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[]) {
 
     struct timeval start, end;
-    double islem_suresi;
+    double execution_time;
 
     gettimeofday(&start, NULL);
 
     if (argc != 5) {
-        printf("\nEksik arguman\n");
-        printf("\nFormat: <GirdiDosyasi.txt> <CiktiDosyasi.txt> <Thread Sayisi> <Siralama Algoritmasi (merge, quick)>\n\n");
+        printf("\nMissing arguments\n");
+        printf("\nFormat: <InputFile.txt> <OutputFile.txt> <Thread Count> <Sorting Algorithm (merge, quick)>\n\n");
         return 1;
     }
 
-    char *GirdiDosyasi = argv[1];
-    char *CiktiDosyasi = argv[2];
-    ThreadSayisi = atoi(argv[3]);
+    char *InputFile = argv[1];
+    char *OutputFile = argv[2];
+    ThreadCount = atoi(argv[3]);
 
-    if(ThreadSayisi < 0){
-
-        printf("/nGecersiz Thread Sayisi!\n");
+    if (ThreadCount < 0) {
+        printf("\nInvalid Thread Count!\n");
         return 1;
     }
 
-    char *SiralamaAlgoritmasi = argv[4];
+    char *SortingAlgorithm = argv[4];
 
-    printf("\nGirdi Dosyasi: %s\n", GirdiDosyasi);
-    printf("Cikti Dosyasi: %s\n", CiktiDosyasi);
-    printf("Thread Sayisi: %d\n", ThreadSayisi);
-    printf("Siralama Algoritmasi: %s\n", SiralamaAlgoritmasi);
+    printf("\nInput File: %s\n", InputFile);
+    printf("Output File: %s\n", OutputFile);
+    printf("Thread Count: %d\n", ThreadCount);
+    printf("Sorting Algorithm: %s\n", SortingAlgorithm);
 
-    FILE *girdi_dosyasi;
+    FILE *input_file;
 
-    girdi_dosyasi = fopen(GirdiDosyasi, "r");
-    if (girdi_dosyasi == NULL) {
-        printf("\nGirdi Dosyasi Acilamadi!, %s\n", girdi_dosyasi);
+    input_file = fopen(InputFile, "r");
+    if (input_file == NULL) {
+        printf("\nFailed to open Input File: %s\n", InputFile);
         return 1;
     }
 
-    char **kelimeler = NULL;
-    char kelime[100];
-    int kelime_sayaci = 0;
-    while (fscanf(girdi_dosyasi, "%s", kelime) != EOF) {
-
-        kelimeler = (char **)realloc(kelimeler, (kelime_sayaci + 1) * sizeof(char *));
-
-        if(kelimeler == NULL){
-
-            printf("\nBellek tahsisi gerceklestirilemedi!\n");
+    char **words = NULL;
+    char word[100];
+    int word_count = 0;
+    while (fscanf(input_file, "%s", word) != EOF) {
+        words = (char **)realloc(words, (word_count + 1) * sizeof(char *));
+        if (words == NULL) {
+            printf("\nMemory allocation failed!\n");
             return 1;
         }
-
-        kelimeler[kelime_sayaci] = strdup(kelime);
-        kelime_sayaci++;
+        words[word_count] = strdup(word);
+        word_count++;
     }
 
-    fclose(girdi_dosyasi);
+    fclose(input_file);
 
-    struct Sort_SiralamaParametreleri parametreler;
-    parametreler.kelimeler = kelimeler;
-    parametreler.baslangic = 0;
-    parametreler.son = kelime_sayaci - 1;
+    struct Sort_Parameters parameters;
+    parameters.words = words;
+    parameters.start = 0;
+    parameters.end = word_count - 1;
 
-    if(strcmp(SiralamaAlgoritmasi, "merge") == 0) {
-
-        if(ThreadSayisi > 0){
-
-            ParalelMergeSort(&parametreler);
-
+    if (strcmp(SortingAlgorithm, "merge") == 0) {
+        if (ThreadCount > 0) {
+            ParallelMergeSort(&parameters);
         } else {
-
-            MergeSort(parametreler.kelimeler, parametreler.baslangic, parametreler.son);
+            MergeSort(parameters.words, parameters.start, parameters.end);
         }
-
-    } else if (strcmp(SiralamaAlgoritmasi, "quick") == 0) {
-
-        if(ThreadSayisi > 0){
-
-            ParalelQuickSort(&parametreler);
-
+    } else if (strcmp(SortingAlgorithm, "quick") == 0) {
+        if (ThreadCount > 0) {
+            ParallelQuickSort(&parameters);
         } else {
-
-            QuickSort(parametreler.kelimeler, parametreler.baslangic, parametreler.son);
+            QuickSort(parameters.words, parameters.start, parameters.end);
         }
-
     } else {
-
-        printf("\nGecersiz algoritma. Kullanilabilecek algoritmalar: merge, quick\n\n");
+        printf("\nInvalid algorithm. Available algorithms: merge, quick\n\n");
         return 1;
     }
 
-    FILE *cikti_dosyasi;
+    FILE *output_file;
     int i;
 
-    cikti_dosyasi = fopen(CiktiDosyasi, "w");
-    if (cikti_dosyasi == NULL) {
-
-        printf("\nCikti Dosyasi Acilamadi!, %s\n", CiktiDosyasi);
+    output_file = fopen(OutputFile, "w");
+    if (output_file == NULL) {
+        printf("\nFailed to open Output File: %s\n", OutputFile);
         return 1;
     }
 
-    for (i = 0; i < kelime_sayaci; i++) {
-
-        fprintf(cikti_dosyasi, "%s\n", kelimeler[i]);
-        free(kelimeler[i]);
+    for (i = 0; i < word_count; i++) {
+        fprintf(output_file, "%s\n", words[i]);
+        free(words[i]);
     }
 
-    fclose(cikti_dosyasi);
-    free(kelimeler);
+    fclose(output_file);
+    free(words);
 
-    printf("\nSiralama Tamamlandi.\n");
-
+    printf("\nSorting Completed.\n");
 
     gettimeofday(&end, NULL);
 
-    islem_suresi = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1000000.0;
+    execution_time = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1000000.0;
 
-    printf("\nProgramin calisma suresi: %.6f saniye\n\n", islem_suresi);
+    printf("\nProgram execution time: %.6f seconds\n\n", execution_time);
 
     return 0;
 }
 
-int ThreadDurum(){
-
+int ThreadStatus() {
     pthread_mutex_lock(&mutex);
-
-    if(ThreadSayisi > 0){
-
-        ThreadSayisi -= 1;
-
+    if (ThreadCount > 0) {
+        ThreadCount -= 1;
         pthread_mutex_unlock(&mutex);
         return 1;
-
     } else {
-
         pthread_mutex_unlock(&mutex);
         return 0;
     }
 }
 
-
-void *ParalelMergeSort(void *args) {
-
-    struct Sort_SiralamaParametreleri *p = (struct Sort_SiralamaParametreleri *)args;
-
-    if(p->baslangic < p->son){
-
-        struct Sort_SiralamaParametreleri *params_1 = malloc(sizeof(struct Sort_SiralamaParametreleri));
-        struct Sort_SiralamaParametreleri *params_2 = malloc(sizeof(struct Sort_SiralamaParametreleri));
-
-        if(params_1 == NULL || params_2 == NULL){
-
-            printf("\nBellek tahsisi gerceklestirilemedi!\n");
+void *ParallelMergeSort(void *args) {
+    struct Sort_Parameters *p = (struct Sort_Parameters *)args;
+    if (p->start < p->end) {
+        struct Sort_Parameters *params_1 = malloc(sizeof(struct Sort_Parameters));
+        struct Sort_Parameters *params_2 = malloc(sizeof(struct Sort_Parameters));
+        if (params_1 == NULL || params_2 == NULL) {
+            printf("\nMemory allocation failed!\n");
             return NULL;
         }
+        params_1->words = p->words;
+        params_1->start = p->start;
+        params_1->end = p->end;
+        params_2->words = p->words;
+        params_2->start = p->start;
+        params_2->end = p->end;
 
-        params_1->kelimeler = p->kelimeler;
-        params_1->baslangic = p->baslangic;
-        params_1->son = p->son;
-        params_2->kelimeler = p->kelimeler;
-        params_2->baslangic = p->baslangic;
-        params_2->son = p->son;
-
-        int ortanca = (p->baslangic + p->son) / 2;
-
-        params_1->son = ortanca;
-        params_2->baslangic = ortanca + 1;
+        int middle = (p->start + p->end) / 2;
+        params_1->end = middle;
+        params_2->start = middle + 1;
 
         pthread_t thread_1;
         pthread_t thread_2;
 
-        if(ThreadDurum()){
-
-            pthread_create(&thread_1, NULL, ParalelMergeSort, params_1);
-
+        if (ThreadStatus()) {
+            pthread_create(&thread_1, NULL, ParallelMergeSort, params_1);
         } else {
-
-            MergeSort(params_1->kelimeler, params_1->baslangic, params_1->son);
+            MergeSort(params_1->words, params_1->start, params_1->end);
         }
 
-        if(ThreadDurum()){
-
-            pthread_create(&thread_2, NULL, ParalelMergeSort, params_2);
-
+        if (ThreadStatus()) {
+            pthread_create(&thread_2, NULL, ParallelMergeSort, params_2);
         } else {
-
-            MergeSort(params_2->kelimeler, params_2->baslangic, params_2->son);
+            MergeSort(params_2->words, params_2->start, params_2->end);
         }
 
         pthread_join(thread_1, NULL);
         pthread_join(thread_2, NULL);
 
-        Merge(params_1->kelimeler, params_1->baslangic, ortanca, params_2->son);
+        Merge(params_1->words, params_1->start, middle, params_2->end);
 
         free(params_1);
         free(params_2);
@@ -228,128 +184,97 @@ void *ParalelMergeSort(void *args) {
     }
 }
 
-
-void MergeSort(char **kelimeler, int baslangic, int son){
-
-
-    if(baslangic < son){
-
-        int ortanca = (baslangic + son) / 2;
-
-        MergeSort(kelimeler, baslangic, ortanca);
-        MergeSort(kelimeler, ortanca + 1, son);
-
-        Merge(kelimeler, baslangic, ortanca, son);
+void MergeSort(char **words, int start, int end) {
+    if (start < end) {
+        int middle = (start + end) / 2;
+        MergeSort(words, start, middle);
+        MergeSort(words, middle + 1, end);
+        Merge(words, start, middle, end);
     }
 }
 
-
-void Merge(char **kelimeler, int baslangic, int ortanca, int son) {
-
+void Merge(char **words, int start, int middle, int end) {
     int i, j, k;
-    int n1 = ortanca - baslangic + 1;
-    int n2 = son - ortanca;
+    int n1 = middle - start + 1;
+    int n2 = end - middle;
 
-    char **Sol = (char **)malloc(n1 * sizeof(char *));
-    char **Sag = (char **)malloc(n2 * sizeof(char *));
+    char **Left = (char **)malloc(n1 * sizeof(char *));
+    char **Right = (char **)malloc(n2 * sizeof(char *));
 
-    if (Sol == NULL || Sag == NULL) {
-
-        printf("\nBellek tahsisi gerceklestirilemedi!\n");
+    if (Left == NULL || Right == NULL) {
+        printf("\nMemory allocation failed!\n");
         exit(1);
     }
 
-    for (i = 0; i < n1; i++){
-
-        Sol[i] = kelimeler[baslangic + i];
+    for (i = 0; i < n1; i++) {
+        Left[i] = words[start + i];
     }
 
     for (j = 0; j < n2; j++) {
-
-        Sag[j] = kelimeler[ortanca + 1 + j];
+        Right[j] = words[middle + 1 + j];
     }
 
     i = 0;
     j = 0;
-    k = baslangic;
-    while(i < n1 && j < n2){
-
-        if(strcasecmp(Sol[i], Sag[j]) <= 0){
-
-            kelimeler[k] = Sol[i];
+    k = start;
+    while (i < n1 && j < n2) {
+        if (strcasecmp(Left[i], Right[j]) <= 0) {
+            words[k] = Left[i];
             i++;
-
         } else {
-
-            kelimeler[k] = Sag[j];
+            words[k] = Right[j];
             j++;
         }
-
         k++;
     }
 
-    while(i < n1){
-
-        kelimeler[k] = Sol[i];
+    while (i < n1) {
+        words[k] = Left[i];
         i++;
         k++;
     }
 
-    while(j < n2){
-
-        kelimeler[k] = Sag[j];
+    while (j < n2) {
+        words[k] = Right[j];
         j++;
         k++;
     }
 
-    free(Sol);
-    free(Sag);
+    free(Left);
+    free(Right);
 }
 
-
-void *ParalelQuickSort(void *args) {
-
-    struct Sort_SiralamaParametreleri *p = (struct Sort_SiralamaParametreleri *)args;
-
-    if (p->baslangic < p->son) {
-
-        int i = Bolumlendir(p->kelimeler, p->baslangic, p->son);
-
-        struct Sort_SiralamaParametreleri *params_1 = malloc(sizeof(struct Sort_SiralamaParametreleri));
-        struct Sort_SiralamaParametreleri *params_2 = malloc(sizeof(struct Sort_SiralamaParametreleri));
-
+void *ParallelQuickSort(void *args) {
+    struct Sort_Parameters *p = (struct Sort_Parameters *)args;
+    if (p->start < p->end) {
+        int i = Partition(p->words, p->start, p->end);
+        struct Sort_Parameters *params_1 = malloc(sizeof(struct Sort_Parameters));
+        struct Sort_Parameters *params_2 = malloc(sizeof(struct Sort_Parameters));
         if (params_1 == NULL || params_2 == NULL) {
-            printf("\nBellek tahsisi gerceklestirilemedi!\n");
+            printf("\nMemory allocation failed!\n");
             return NULL;
         }
 
-        params_1->kelimeler = p->kelimeler;
-        params_1->baslangic = p->baslangic;
-        params_1->son = i - 1;
-
-        params_2->kelimeler = p->kelimeler;
-        params_2->baslangic = i + 1;
-        params_2->son = p->son;
+        params_1->words = p->words;
+        params_1->start = p->start;
+        params_1->end = i - 1;
+        params_2->words = p->words;
+        params_2->start = i + 1;
+        params_2->end = p->end;
 
         pthread_t thread_1;
         pthread_t thread_2;
 
-        if (ThreadDurum()) {
-
-            pthread_create(&thread_1, NULL, ParalelQuickSort, params_1);
-
+        if (ThreadStatus()) {
+            pthread_create(&thread_1, NULL, ParallelQuickSort, params_1);
         } else {
-
-            QuickSort(params_1->kelimeler, params_1->baslangic, params_1->son);
+            QuickSort(params_1->words, params_1->start, params_1->end);
         }
 
-        if (ThreadDurum()) {
-
-            pthread_create(&thread_2, NULL, ParalelQuickSort, params_2);
-
+        if (ThreadStatus()) {
+            pthread_create(&thread_2, NULL, ParallelQuickSort, params_2);
         } else {
-
-            QuickSort(params_2->kelimeler, params_2->baslangic, params_2->son);
+            QuickSort(params_2->words, params_2->start, params_2->end);
         }
 
         pthread_join(thread_1, NULL);
@@ -362,42 +287,29 @@ void *ParalelQuickSort(void *args) {
     return NULL;
 }
 
-
-void QuickSort(char **kelimeler, int baslangic, int son){
-
-    if(baslangic < son){
-
-        int i = Bolumlendir(kelimeler, baslangic, son);
-
-        QuickSort(kelimeler, baslangic, i - 1);
-        QuickSort(kelimeler, i + 1, son);
+void QuickSort(char **words, int start, int end) {
+    if (start < end) {
+        int i = Partition(words, start, end);
+        QuickSort(words, start, i - 1);
+        QuickSort(words, i + 1, end);
     }
 }
 
-
-int Bolumlendir(char **kelimeler, int baslangic, int son){
-
-    char *pivot = kelimeler[son];
-
-    int i = (baslangic - 1);
-
-    for(int j = baslangic; j <= son; j++){
-
-        if(strcasecmp(kelimeler[j], pivot) < 0){
-
+int Partition(char **words, int start, int end) {
+    char *pivot = words[end];
+    int i = (start - 1);
+    for (int j = start; j <= end; j++) {
+        if (strcasecmp(words[j], pivot) < 0) {
             i++;
-            Degistir(kelimeler, i, j);
+            Swap(words, i, j);
         }
     }
-
-    Degistir(kelimeler, i + 1, son);
-    return(i + 1);
+    Swap(words, i + 1, end);
+    return (i + 1);
 }
 
-
-void Degistir(char **kelimeler, int i, int j){
-
-    char *temp = kelimeler[i];
-    kelimeler[i] = kelimeler[j];
-    kelimeler[j] = temp;
+void Swap(char **words, int i, int j) {
+    char *temp = words[i];
+    words[i] = words[j];
+    words[j] = temp;
 }
